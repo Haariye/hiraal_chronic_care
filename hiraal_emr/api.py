@@ -1841,7 +1841,9 @@ def book_appointment(patient, practitioner, appointment_date,
     from hiraal_emr.services.availability import slot_is_bookable
     from hiraal_emr.services.plan_coverage import apply_coverage_to_appointment, check_coverage
 
-    _require_patient_access(patient, permission="can_view_appointments")
+    # Same gate as check_service_coverage: own patient or active caregiver link.
+    # Do not require can_view_appointments here — that flag is for listing only.
+    _require_patient_access(patient)
 
     if not practitioner:
         frappe.throw(_("Please choose a doctor"))
@@ -2337,6 +2339,8 @@ def _caregiver_link_row(patient):
 
 def _require_patient_access(patient, permission=None):
     """Clinic staff, the patient themselves, or an active caregiver may proceed."""
+    if not patient:
+        frappe.throw(_("No patient selected"), frappe.PermissionError)
     if _is_clinical_user():
         return
     own = _own_patient_name_or_none()
@@ -2344,9 +2348,17 @@ def _require_patient_access(patient, permission=None):
         return
     link = _caregiver_link_row(patient)
     if not link:
-        frappe.throw(_("Not permitted"), frappe.PermissionError)
+        frappe.throw(
+            _("Not permitted — this account is not linked to that patient"),
+            frappe.PermissionError,
+        )
     if permission and not link.get(permission):
-        frappe.throw(_("Not permitted"), frappe.PermissionError)
+        frappe.throw(
+            _("Not permitted — missing {0} access for this patient").format(
+                permission.replace("can_", "").replace("_", " ")
+            ),
+            frappe.PermissionError,
+        )
 
 
 @frappe.whitelist()
@@ -2991,7 +3003,13 @@ def get_my_subscription():
     ]
     # Trial / category columns may be missing until migrate on older sites.
     meta = frappe.get_meta("Care Subscription")
-    for extra in ("plan_category", "is_on_trial", "trial_end_date"):
+    for extra in (
+        "plan_category",
+        "is_on_trial",
+        "trial_end_date",
+        "pending_plan",
+        "pending_plan_effective_date",
+    ):
         if meta.has_field(extra):
             fields.append(extra)
 
@@ -3073,6 +3091,61 @@ def subscribe_my_plan(plan, start_trial=0):
                 "Care Subscription", existing.name, "is_on_trial", 0, update_modified=False
             )
         sub_doc = frappe.get_doc("Care Subscription", existing.name)
+        # Paid Active (or Expiring Soon): finish the current month — schedule
+        # upgrade/downgrade for next_billing_date instead of switching now.
+        meta = frappe.get_meta("Care Subscription")
+        can_defer = meta.has_field("pending_plan") and meta.has_field(
+            "pending_plan_effective_date"
+        )
+        # Finish the current billing period before switching plan.
+        is_live_paid = existing.status in ("Active", "Expiring Soon") and not on_trial
+
+        same_plan = (
+            sub_doc.plan == plan_row["name"] and flt(sub_doc.monthly_fee) == fee
+        )
+        if same_plan:
+            if can_defer and getattr(sub_doc, "pending_plan", None):
+                sub_doc.pending_plan = None
+                sub_doc.pending_plan_effective_date = None
+                sub_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+            return {
+                "subscription": existing.name,
+                "monthly_fee": fee,
+                "plan": plan_row["name"],
+                "status": "existing",
+                "amount_due_now": 0 if (existing.status == "Active" and on_trial) else fee,
+                "is_on_trial": on_trial,
+                "trial_end_date": existing.get("trial_end_date"),
+                "plan_change_deferred": 0,
+            }
+
+        if is_live_paid and can_defer:
+            effective = sub_doc.next_billing_date or today()
+            sub_doc.pending_plan = plan_row["name"]
+            sub_doc.pending_plan_effective_date = effective
+            sub_doc.save(ignore_permissions=True)
+            frappe.db.commit()
+            audit_log(
+                "Update",
+                "Care Subscription",
+                sub_doc.name,
+                f"Scheduled plan change to {plan_row['name']} from {effective}",
+            )
+            return {
+                "subscription": existing.name,
+                "monthly_fee": flt(sub_doc.monthly_fee),
+                "plan": sub_doc.plan,
+                "status": "scheduled",
+                "amount_due_now": 0,
+                "is_on_trial": 0,
+                "trial_end_date": existing.get("trial_end_date"),
+                "plan_change_deferred": 1,
+                "pending_plan": plan_row["name"],
+                "pending_plan_effective_date": str(effective),
+                "effective_from": str(effective),
+            }
+
         if sub_doc.plan != plan_row["name"] or flt(sub_doc.monthly_fee) != fee:
             apply_plan_to_subscription(sub_doc, plan_row)
             sub_doc.save(ignore_permissions=True)
@@ -3085,6 +3158,7 @@ def subscribe_my_plan(plan, start_trial=0):
             "amount_due_now": 0 if (existing.status == "Active" and on_trial) else fee,
             "is_on_trial": on_trial,
             "trial_end_date": existing.get("trial_end_date"),
+            "plan_change_deferred": 0,
         }
 
     want_trial = int(start_trial or 0)
@@ -3363,6 +3437,27 @@ def _activate_sponsored_care_if_any(family_member=None, owner=None, sub_name=Non
         frappe.logger("hiraal_pay").exception("activate_sponsored_care failed for %s", fm)
 
 
+def _apply_pending_plan_change(sub):
+    """Apply a scheduled plan upgrade/downgrade when its effective date has arrived."""
+    from hiraal_emr.services.subscription_catalog import apply_pending_plan_if_due
+
+    if isinstance(sub, dict):
+        doc = frappe.get_doc("Care Subscription", sub["name"])
+    elif hasattr(sub, "save"):
+        doc = sub
+    else:
+        doc = frappe.get_doc("Care Subscription", sub.name)
+    changed = apply_pending_plan_if_due(doc)
+    if changed:
+        audit_log(
+            "Update",
+            "Care Subscription",
+            doc.name,
+            f"Applied scheduled plan change to {doc.plan}",
+        )
+    return changed
+
+
 def _mark_subscription_paid(patient, reference):
     """Mirror Care Subscription.process_payment()'s success branch after the
     real gateway confirms payment. Idempotent per transaction reference."""
@@ -3378,6 +3473,12 @@ def _mark_subscription_paid(patient, reference):
     if not sub_name:
         return
     sub = frappe.get_doc("Care Subscription", sub_name)
+    # Apply any deferred upgrade/downgrade before charging this period.
+    try:
+        _apply_pending_plan_change(sub)
+        sub.reload()
+    except Exception:
+        frappe.logger("hiraal_sub").exception("apply pending plan on pay failed")
     amount = subscription_charge_amount(sub)
     if amount <= 0:
         amount = flt(sub.monthly_fee)

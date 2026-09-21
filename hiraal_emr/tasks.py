@@ -75,6 +75,17 @@ def process_subscription_billing():
     for sub_name in due_subs:
         try:
             sub = frappe.get_doc("Care Subscription", sub_name)
+            # Apply scheduled upgrade/downgrade at period end before nudging payment.
+            try:
+                from hiraal_emr.services.subscription_catalog import apply_pending_plan_if_due
+
+                apply_pending_plan_if_due(sub)
+                sub.reload()
+            except Exception:
+                frappe.log_error(
+                    f"Pending plan apply failed for {sub_name}",
+                    "Subscription Billing",
+                )
             # End free trial when the trial billing date arrives.
             if int(getattr(sub, "is_on_trial", 0) or 0):
                 sub.db_set("is_on_trial", 0)

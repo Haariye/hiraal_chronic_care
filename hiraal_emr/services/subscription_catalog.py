@@ -249,6 +249,24 @@ def apply_plan_to_subscription(sub_doc, plan_row):
 	sub_doc.monthly_fee = flt(plan_row["monthly_fee"])
 
 
+def apply_pending_plan_if_due(sub_doc):
+	"""Apply scheduled plan change when effective date has arrived. Returns bool."""
+	if not hasattr(sub_doc, "pending_plan") or not sub_doc.pending_plan:
+		return False
+	effective = getattr(sub_doc, "pending_plan_effective_date", None)
+	if effective and getdate(effective) > getdate(today()):
+		return False
+	plan_row = resolve_plan(sub_doc.pending_plan)
+	if not plan_row:
+		return False
+	apply_plan_to_subscription(sub_doc, plan_row)
+	sub_doc.pending_plan = None
+	if hasattr(sub_doc, "pending_plan_effective_date"):
+		sub_doc.pending_plan_effective_date = None
+	sub_doc.save(ignore_permissions=True)
+	return True
+
+
 def resolve_plan(plan_name):
 	if not plan_name:
 		return None

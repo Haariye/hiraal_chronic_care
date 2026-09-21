@@ -22,6 +22,8 @@
     "column_break_dt1",
     "end_date",
     "auto_renew",
+    "pending_plan",
+    "pending_plan_effective_date",
     "section_payment",
     "payment_method",
     "payment_reference",
@@ -161,6 +163,19 @@
       "fieldtype": "Check",
       "label": "Auto Renew",
       "default": 1
+    },
+    {
+      "fieldname": "pending_plan",
+      "fieldtype": "Link",
+      "label": "Pending Plan Change",
+      "options": "Subscription Plan",
+      "description": "Plan that will apply on the effective date (end of current period)."
+    },
+    {
+      "fieldname": "pending_plan_effective_date",
+      "fieldtype": "Date",
+      "label": "Plan Change Effective Date",
+      "depends_on": "pending_plan"
     },
     {
       "fieldname": "section_payment",
