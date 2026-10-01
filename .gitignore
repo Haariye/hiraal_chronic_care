@@ -41,3 +41,10 @@ site_config.json
 sites/
 *.sql.gz
 *.tar.gz
+.env
+*.log
+node_modules/
+vendor/
+storage/
+*.sql
+*.bak
