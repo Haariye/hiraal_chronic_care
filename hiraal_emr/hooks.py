@@ -4,7 +4,7 @@ app_publisher = "Hiraal Health Center"
 app_description = "Chronic Disease Management Platform for Somaliland — Alert Queue, Nurse Tasks, Doctor Review, Subscriptions, Device Management, Analytics"
 app_email = "info@hiraalhealth.so"
 app_license = "MIT"
-required_apps = ["frappe", "erpnext", "health"]
+required_apps = ["frappe", "erpnext", "healthcare"]
 
 # ---------- Website / Portal ----------
 # home_page = "clinic-dashboard"
@@ -40,26 +40,26 @@ doc_events = {
         "on_update": "hiraal_emr.api.on_lab_test_update",
     },
     "Daily Reading": {
-        "after_insert": "hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "after_insert": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
     },
     "Chronic Care Alert": {
         "after_insert": [
-            "hiraal_emr.doctype.audit_log.audit_log.log_action",
+            "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
             "hiraal_emr.api.on_chronic_care_alert_insert",
         ],
-        "on_update": "hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "on_update": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
     },
     "Doctor Review": {
-        "after_insert": "hiraal_emr.doctype.audit_log.audit_log.log_action",
-        "on_update": "hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "after_insert": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "on_update": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
     },
     "Care Subscription": {
-        "after_insert": "hiraal_emr.doctype.audit_log.audit_log.log_action",
-        "on_update": "hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "after_insert": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "on_update": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
     },
     "Subscription Payment": {
-        "after_insert": "hiraal_emr.doctype.audit_log.audit_log.log_action",
-        "on_update": "hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "after_insert": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
+        "on_update": "hiraal_emr.hiraal_emr.doctype.audit_log.audit_log.log_action",
     },
     "Medicine Request": {
         "on_update": "hiraal_emr.api.on_medicine_request_update",

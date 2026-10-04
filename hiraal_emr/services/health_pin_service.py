@@ -268,7 +268,7 @@ def set_health_pin(pin=None, current_pin=None):
             frappe.throw(_("Current PIN is incorrect"))
     _write_pin(own, new_pin)
     try:
-        from hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
+        from hiraal_emr.hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
 
         audit_log("Update", DOCTYPE, own, "Health PIN set")
     except Exception:
@@ -373,7 +373,7 @@ def reset_health_pin(otp=None, new_pin=None, mobile=None):
 
     _write_pin(patient, pin)
     try:
-        from hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
+        from hiraal_emr.hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
 
         audit_log("Update", DOCTYPE, patient, "Health PIN reset after OTP")
     except Exception:

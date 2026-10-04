@@ -16,7 +16,7 @@ from hiraal_emr.services.otp_service import (
 )
 from hiraal_emr.services.sms_service import send_otp_sms, send_alert_sms, send_sms
 try:
-    from hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
+    from hiraal_emr.hiraal_emr.doctype.audit_log.audit_log import log_action as audit_log
 except Exception:
     # Audit logging must never break module import or site boot. If the
     # audit_log doctype module isn't importable in an environment, degrade to a
